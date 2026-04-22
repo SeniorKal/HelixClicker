@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helix Clicker</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="pagina-index">
+
+<div class="container">
+    <div class="esquerda">
+        <h2 id="dna">DNA: 0</h2>
+        <p id="dnaPorClique">DNA por clique: 1</p>
+        <p id="dnaPorSegundo">DNA por segundo: 0</p>
+
+        <img id="helix" src="images/helix.png" alt="Helice de DNA" draggable="false">
+    </div>
+
+    <div class="meio">
+        <button class="btn-ui" onclick="irParaLoja()">LOJA</button>
+        <button class="btn-ui" onclick="irParaConquistas()">CONQUISTAS</button>
+        <button class="btn-ui botao-reset" onclick="resetarJogo()">RESETAR JOGO</button>
+
+        <div class="area-vazia">
+            <div class="mapa-wrapper" aria-label="Mapa interativo navegavel">
+                <div id="conteudoMapa" class="mapa-conteudo">
+                    <img
+                        id="mapaInterativo"
+                        src="images/map.png"
+                        alt="Mapa interativo"
+                        draggable="false"
+                    >
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="direita">
+        <div class="inventario-topo">
+            <h3>Cartas</h3>
+            <label class="filtro-inventario" for="filtroRaridade">
+                <span>Filtro</span>
+                <select id="filtroRaridade">
+                    <option value="todos">Todas</option>
+                    <option value="lendario">Lendario</option>
+                    <option value="epico">Epico</option>
+                    <option value="raro">Raro</option>
+                    <option value="comum">Comum</option>
+                </select>
+            </label>
+        </div>
+        <div class="cartas-area"></div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+
+</body>
+</html>

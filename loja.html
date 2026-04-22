@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loja</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="pagina-loja">
+
+    
+<main class="loja-wrapper">
+    <section class="loja-card">
+        <button onclick="voltar()">Voltar</button>
+        <h1>LOJA DE PACKS</h1>
+        <p id="dna">DNA: 0</p>
+        <div class="acoes-loja">
+        </div>
+        <div class="pack-area">
+            <h3 id="nome-pack">Pack Prata</h3>
+            <p id="preco-pack">Custo: 50 DNA</p>
+            <div class="seletor-pack">
+                <button id="setaPackEsquerda" class="seta-pack" type="button" aria-label="Pack anterior">&#9664;</button>
+                <img id="pack" src="images/Pack1.png" alt="Pack selecionado" draggable="false">
+                <button id="setaPackDireita" class="seta-pack" type="button" aria-label="Proximo pack">&#9654;</button>
+            </div>
+            <div class="cartas-area" draggable="false"></div>
+        </div>
+    </section>
+
+    <section class="chances-card">
+        <h2>Chances de Raridade</h2>
+        <p id="resumo-pack" class="resumo-pack"></p>
+        <table class="tabela-chances">
+            <thead>
+                <tr>
+                    <th>Raridade</th>
+                    <th>Chance</th>
+                    <th>Efeito</th>
+                </tr>
+            </thead>
+            <tbody id="tabelaChancesBody"></tbody>
+        </table>
+    </section>
+</main>
+
+<script src="script.js"></script>
+
+</body>
+</html>
