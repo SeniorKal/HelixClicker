@@ -3,7 +3,8 @@ const STORAGE_KEYS = {
     cartas: "cartas",
     precosPacks: "precosPacks",
     packsDesbloqueados: "packsDesbloqueados",
-    missoesMapa: "missoesMapa"
+    missoesMapa: "missoesMapa",
+    organizacao: "organizacao"
 };
 const CAMINHO_SOM_DESBLOQUEIO = "sounds/Desbloqueio.mp3";
 
@@ -251,6 +252,7 @@ async function resetarJogo() {
     localStorage.removeItem(STORAGE_KEYS.precosPacks);
     localStorage.removeItem(STORAGE_KEYS.packsDesbloqueados);
     localStorage.removeItem(STORAGE_KEYS.missoesMapa);
+    localStorage.removeItem(STORAGE_KEYS.organizacao);
     sessionStorage.clear();
 
     dna = 0;
@@ -1596,6 +1598,63 @@ function inicializarMapaInterativo() {
     }
 }
 
+function inicializarOrganizacao() {
+    const nomeEl = document.getElementById("organizacaoNome");
+    const inputEl = document.getElementById("organizacaoInput");
+
+    if (!nomeEl || !inputEl) {
+        return;
+    }
+
+    const nomeSalvo = localStorage.getItem(STORAGE_KEYS.organizacao) || "Organização Desconhecida";
+    nomeEl.innerText = nomeSalvo;
+    inputEl.value = nomeSalvo;
+
+    nomeEl.addEventListener("click", () => {
+        nomeEl.style.display = "none";
+        inputEl.style.display = "block";
+        inputEl.focus();
+        inputEl.select();
+    });
+
+    inputEl.addEventListener("blur", () => {
+        salvarOrganizacao();
+    });
+
+    inputEl.addEventListener("keydown", (evento) => {
+        if (evento.key === "Enter") {
+            salvarOrganizacao();
+        }
+    });
+}
+
+function salvarOrganizacao() {
+    const nomeEl = document.getElementById("organizacaoNome");
+    const inputEl = document.getElementById("organizacaoInput");
+
+    if (!nomeEl || !inputEl) {
+        return;
+    }
+
+    let novoNome = inputEl.value.trim();
+
+    if (novoNome === "") {
+        novoNome = "Organização Desconhecida";
+    }
+
+    if (novoNome.length > 25) {
+        novoNome = novoNome.substring(0, 25);
+    }
+
+    localStorage.setItem(STORAGE_KEYS.organizacao, novoNome);
+
+    nomeEl.innerText = novoNome;
+    inputEl.value = novoNome;
+
+    nomeEl.style.display = "block";
+    inputEl.style.display = "none";
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     carregarPrecosPacks();
     carregarPacksDesbloqueados();
@@ -1610,5 +1669,6 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarAtalhosModalCarta();
     inicializarFiltroInventario();
     inicializarMapaInterativo();
+    inicializarOrganizacao();
     mostrarCartas();
 });

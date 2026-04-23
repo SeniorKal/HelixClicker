@@ -176,6 +176,44 @@ button:hover {
     z-index: 2;
 }
 
+.organizacao-container {
+    margin-bottom: 15px;
+    position: relative;
+    z-index: 3;
+}
+
+.organizacao-nome {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--accent);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: color 0.2s ease, transform 0.2s ease;
+    text-shadow: 0 0 10px rgba(73, 242, 181, 0.3);
+}
+
+.organizacao-nome:hover {
+    color: #ffffff;
+    transform: scale(1.02);
+}
+
+.organizacao-input {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    color: var(--text-main);
+    font-size: 18px;
+    font-weight: 700;
+    padding: 8px 12px;
+    text-align: center;
+    width: 90%;
+    outline: none;
+    font-family: inherit;
+    box-shadow: 0 0 15px rgba(73, 242, 181, 0.2);
+}
+
 #dnaPorClique,
 #dnaPorSegundo {
     margin: 0;
