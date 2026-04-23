@@ -45,16 +45,6 @@ You collect cards of different rarities, upgrade them, and generate DNA — the 
 
 ---
 
-## 📌 Roadmap
-
-* [ ] Advanced mission system (multiple types)
-* [ ] Improved UI/UX (animations & polish)
-* [ ] Save system improvements
-* [ ] More card types and effects
-* [ ] Sound effects and feedback
-
----
-
 ## 👤 Author
 
 **Kauê de Figueiredo**
