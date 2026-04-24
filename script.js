@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
     precosPacks: "precosPacks",
     packsDesbloqueados: "packsDesbloqueados",
     missoesMapa: "missoesMapa",
+    operacoesMapa: "operacoesMapa",
     organizacao: "organizacao"
 };
 const CAMINHO_SOM_DESBLOQUEIO = "sounds/Desbloqueio.mp3";
@@ -79,6 +80,7 @@ let bonusMultiplicadorClique = 0;
 let packSelecionadoIndex = 0;
 let filtroRaridadeAtual = "todos";
 let packsDesbloqueados = [];
+let estadoOperacoes = criarEstadoOperacoesPadrao();
 
 function lerNumero(chave, valorPadrao) {
     const valor = parseFloat(localStorage.getItem(chave));
@@ -162,6 +164,7 @@ function garantirContainerAvisos() {
 function tocarSomDesbloqueio() {
     const audio = new Audio(CAMINHO_SOM_DESBLOQUEIO);
 
+    audio.volume = 0.25;
     audio.play().catch(() => {
         // Alguns navegadores bloqueiam audio antes da primeira interacao do usuario.
     });
@@ -252,6 +255,7 @@ async function resetarJogo() {
     localStorage.removeItem(STORAGE_KEYS.precosPacks);
     localStorage.removeItem(STORAGE_KEYS.packsDesbloqueados);
     localStorage.removeItem(STORAGE_KEYS.missoesMapa);
+    localStorage.removeItem(STORAGE_KEYS.operacoesMapa);
     localStorage.removeItem(STORAGE_KEYS.organizacao);
     sessionStorage.clear();
 
@@ -262,6 +266,7 @@ async function resetarJogo() {
     packSelecionadoIndex = 0;
     filtroRaridadeAtual = "todos";
     packsDesbloqueados = criarPacksDesbloqueadosPadrao();
+    estadoOperacoes = criarEstadoOperacoesPadrao();
 
     if ("caches" in window) {
         try {
@@ -433,6 +438,112 @@ function obterNomeRaridade(raridade) {
     return raridade;
 }
 
+function criarEstadoOperacoesPadrao() {
+    return {
+        concluidas: [],
+        coletadas: [],
+        resultados: {},
+        cooldowns: {},
+        emAndamento: {},
+        ferimentos: {}
+    };
+}
+
+function obterOperacaoPorId(idOperacao) {
+    return OPERACOES_MAPA.find((operacao) => operacao.id === idOperacao);
+}
+
+function obterAgora() {
+    return Date.now();
+}
+
+function limparTemposExpiradosOperacoes() {
+    const agora = obterAgora();
+
+    Object.entries(estadoOperacoes.cooldowns).forEach(([idOperacao, terminaEm]) => {
+        if (Number(terminaEm) <= agora) {
+            delete estadoOperacoes.cooldowns[idOperacao];
+        }
+    });
+
+    Object.entries(estadoOperacoes.ferimentos).forEach(([nomeCarta, terminaEm]) => {
+        if (Number(terminaEm) <= agora) {
+            delete estadoOperacoes.ferimentos[nomeCarta];
+        }
+    });
+}
+
+function carregarEstadoOperacoesMapa() {
+    const estadoSalvo = JSON.parse(localStorage.getItem(STORAGE_KEYS.operacoesMapa));
+    const padrao = criarEstadoOperacoesPadrao();
+
+    if (!estadoSalvo) {
+        estadoOperacoes = padrao;
+        salvarEstadoOperacoesMapa();
+        return;
+    }
+
+    estadoOperacoes = {
+        concluidas: Array.isArray(estadoSalvo.concluidas) ? estadoSalvo.concluidas : [],
+        coletadas: Array.isArray(estadoSalvo.coletadas) ? estadoSalvo.coletadas : [],
+        resultados: estadoSalvo.resultados && typeof estadoSalvo.resultados === "object" ? estadoSalvo.resultados : {},
+        cooldowns: estadoSalvo.cooldowns && typeof estadoSalvo.cooldowns === "object" ? estadoSalvo.cooldowns : {},
+        emAndamento: estadoSalvo.emAndamento && typeof estadoSalvo.emAndamento === "object" ? estadoSalvo.emAndamento : {},
+        ferimentos: estadoSalvo.ferimentos && typeof estadoSalvo.ferimentos === "object" ? estadoSalvo.ferimentos : {}
+    };
+
+    resolverOperacoesExpiradas();
+    limparTemposExpiradosOperacoes();
+    salvarEstadoOperacoesMapa();
+}
+
+function salvarEstadoOperacoesMapa() {
+    localStorage.setItem(STORAGE_KEYS.operacoesMapa, JSON.stringify(estadoOperacoes));
+}
+
+function cartaEstaEmOperacao(nomeCarta) {
+    return Object.values(estadoOperacoes.emAndamento).some((operacaoEmAndamento) => (
+        Array.isArray(operacaoEmAndamento.cartas) && operacaoEmAndamento.cartas.includes(nomeCarta)
+    ));
+}
+
+function cartaEstaFerida(nomeCarta) {
+    limparTemposExpiradosOperacoes();
+    return Boolean(estadoOperacoes.ferimentos[nomeCarta]);
+}
+
+function cartaPodeSerDespachada(carta) {
+    return !cartaEstaEmOperacao(carta.nome) && !cartaEstaFerida(carta.nome);
+}
+
+function obterStatusCartaOperacao(carta) {
+    if (cartaEstaEmOperacao(carta.nome)) {
+        return "Em operacao";
+    }
+
+    if (cartaEstaFerida(carta.nome)) {
+        return "Ferido";
+    }
+
+    return "";
+}
+
+function obterTempoRestanteMs(terminaEm) {
+    return Math.max(0, Number(terminaEm) - obterAgora());
+}
+
+function formatarTempoCurto(ms) {
+    const segundosTotais = Math.ceil(ms / 1000);
+    const minutos = Math.floor(segundosTotais / 60);
+    const segundos = segundosTotais % 60;
+
+    if (minutos <= 0) {
+        return `${segundos}s`;
+    }
+
+    return `${minutos}m ${String(segundos).padStart(2, "0")}s`;
+}
+
 function packEstaDesbloqueado(index) {
     return Boolean(packsDesbloqueados[index]);
 }
@@ -463,7 +574,7 @@ function recalcularBonusCartas() {
     dnaPorClique = 1;
     dnaPorSegundo = 0;
 
-    cartasSalvas.forEach((carta) => {
+    cartasSalvas.filter(cartaPodeSerDespachada).forEach((carta) => {
         const valorPassiva = obterValorPassivaCarta(carta);
 
         if (carta.passivaTipo === "clique") {
@@ -850,6 +961,7 @@ function abrirModalCarta(carta) {
     const progresso = document.createElement("div");
     const barra = document.createElement("div");
     const textoProgresso = document.createElement("p");
+    const statusOperacao = obterStatusCartaOperacao(carta);
 
     // Nova seção de stats
     const statsContainer = document.createElement("div");
@@ -888,6 +1000,7 @@ function abrirModalCarta(carta) {
     statsContainer.appendChild(statsLista);
 
     const botaoUpgrade = document.createElement("button");
+    const botaoCurar = document.createElement("button");
 
     modal.id = "modalCarta";
     modal.className = "modal-carta";
@@ -903,6 +1016,7 @@ function abrirModalCarta(carta) {
     barra.className = "modal-carta-progresso-barra";
     textoProgresso.className = "modal-carta-progresso-texto";
     botaoUpgrade.className = "modal-carta-upgrade";
+    botaoCurar.className = "modal-carta-curar";
 
     botaoFechar.type = "button";
     botaoFechar.setAttribute("aria-label", "Fechar detalhes da carta");
@@ -919,7 +1033,9 @@ function abrirModalCarta(carta) {
     textoProgresso.innerText = obterTextoProgressoAmostras(carta);
     botaoUpgrade.type = "button";
     botaoUpgrade.innerText = carta.level >= LEVEL_MAXIMO_CARTA ? "Level maximo" : "Subir nivel";
-    botaoUpgrade.disabled = !cartaPodeSubirNivel(carta);
+    botaoUpgrade.disabled = !cartaPodeSubirNivel(carta) || !cartaPodeSerDespachada(carta);
+    botaoCurar.type = "button";
+    botaoCurar.innerText = "Curar agora - 75 DNA";
 
     carta3d.appendChild(imagem);
     carta3d.appendChild(brilho);
@@ -929,6 +1045,14 @@ function abrirModalCarta(carta) {
     conteudo.appendChild(nome);
     conteudo.appendChild(raridade);
     conteudo.appendChild(level);
+    if (statusOperacao) {
+        const statusCarta = document.createElement("p");
+        statusCarta.className = "modal-carta-status-operacao";
+        statusCarta.innerText = cartaEstaFerida(carta.nome)
+            ? `Ferido: recupera em ${formatarTempoCurto(obterTempoRestanteMs(estadoOperacoes.ferimentos[carta.nome]))}`
+            : "Em operacao: temporariamente fora da colecao ativa";
+        conteudo.appendChild(statusCarta);
+    }
     conteudo.appendChild(descricao);
 
     // Inserir os stats antes do progresso de amostras
@@ -937,6 +1061,9 @@ function abrirModalCarta(carta) {
     conteudo.appendChild(progresso);
     conteudo.appendChild(textoProgresso);
     conteudo.appendChild(botaoUpgrade);
+    if (cartaEstaFerida(carta.nome)) {
+        conteudo.appendChild(botaoCurar);
+    }
     modal.appendChild(conteudo);
     document.body.appendChild(modal);
 
@@ -953,6 +1080,10 @@ function abrirModalCarta(carta) {
         if (cartaAtualizada) {
             abrirModalCarta(cartaAtualizada);
         }
+    });
+
+    botaoCurar.addEventListener("click", () => {
+        curarCartaFerida(carta.nome);
     });
 
     inicializarEfeito3DModalCarta(carta3d, brilho);
@@ -987,12 +1118,17 @@ function criarCardInventario(carta) {
     const tooltip = document.createElement("div");
     const nome = document.createElement("p");
     const raridade = document.createElement("span");
+    const statusOperacao = obterStatusCartaOperacao(carta);
+    const podeDespachar = cartaPodeSerDespachada(carta);
 
     container.classList.add("carta-container");
     container.classList.add(obterClasseRaridade(carta.raridade));
+    container.classList.toggle("carta-indisponivel", !podeDespachar);
     container.setAttribute("role", "button");
     container.setAttribute("tabindex", "0");
     container.setAttribute("aria-label", `Abrir detalhes da carta ${carta.nome}`);
+    container.draggable = podeDespachar;
+    container.dataset.cartaNome = carta.nome;
 
     img.src = carta.imagem;
     img.alt = carta.nome;
@@ -1012,7 +1148,7 @@ function criarCardInventario(carta) {
     indicadorUpgrade.title = "Pronta para subir de nivel";
 
     tooltip.classList.add("tooltip-carta");
-    tooltip.innerText = `${carta.nome} - Lv.${carta.level}\n${obterDescricaoEfeito(carta)}\n${obterTextoProgressoAmostras(carta)}`;
+    tooltip.innerText = `${carta.nome} - Lv.${carta.level}\n${obterDescricaoEfeito(carta)}\n${obterTextoProgressoAmostras(carta)}${statusOperacao ? `\nStatus: ${statusOperacao}` : ""}`;
 
     container.addEventListener("click", () => abrirModalCarta(carta));
     container.addEventListener("keydown", (evento) => {
@@ -1022,12 +1158,33 @@ function criarCardInventario(carta) {
         }
     });
 
+    container.addEventListener("dragstart", (evento) => {
+        if (!podeDespachar) {
+            evento.preventDefault();
+            return;
+        }
+
+        evento.dataTransfer.setData("text/plain", carta.nome);
+        evento.dataTransfer.effectAllowed = "move";
+        container.classList.add("carta-arrastando");
+    });
+
+    container.addEventListener("dragend", () => {
+        container.classList.remove("carta-arrastando");
+    });
+
     container.appendChild(img);
     container.appendChild(nome);
     container.appendChild(raridade);
     container.appendChild(level);
     if (cartaPodeSubirNivel(carta)) {
         container.appendChild(indicadorUpgrade);
+    }
+    if (statusOperacao) {
+        const status = document.createElement("span");
+        status.className = "status-carta-operacao";
+        status.innerText = statusOperacao;
+        container.appendChild(status);
     }
     container.appendChild(tooltip);
 
@@ -1063,7 +1220,7 @@ function mostrarCartas() {
         return;
     }
 
-    const cartasSalvas = carregarCartasSalvas();
+    const cartasSalvas = carregarCartasSalvas().filter((carta) => !cartaEstaEmOperacao(carta.nome));
     area.innerHTML = "";
 
     if (cartasSalvas.length === 0) {
@@ -1160,8 +1317,13 @@ const AREAS_MAPA = [
 const TIPOS_MISSAO = {
     principal: {
         nome: "Missao Principal",
-        simbolo: "!",
+        simbolo: "",
         classe: "missao-principal"
+    },
+    operacao: {
+        nome: "Missao de Operacao",
+        simbolo: "!",
+        classe: "missao-operacao"
     }
 };
 
@@ -1170,8 +1332,8 @@ const MISSOES = [
     {
         id: "missao-01",
         nome: "Pé Direito",
-        descricao: "As amostras comuns estao reagindo ao DNA instavel espalhado pela zona. Suba o nivel de 2 comuns antes que a mutacao saia do controle.",
-        recompensa: "200 DNA",
+        descricao: "Precisamos aumentar a equipe e aprimorar os membros para futuras operacões. Suba o nivel de 2 comuns.",
+        recompensa: "Leitor Tático de Operações.",
         concluida: false,
         desbloqueada: true,
         recompensaAplicada: false,
@@ -1182,7 +1344,7 @@ const MISSOES = [
     {
         id: "missao-02",
         nome: "Unidade aprimorada",
-        descricao: "A primeira evolucao deixou rastros nas criaturas mais fracas. Tenha quatro comuns nivel 2 para isolar o padrao genetico e abrir uma nova rota de suprimentos.",
+        descricao: "O leitor tatico revelou focos de risco pela cidade. Conclua 3 missoes de operacao para validar os protocolos de campo e abrir uma nova rota de suprimentos.",
         recompensa: "Desbloqueia Pack Ouro",
         concluida: false,
         desbloqueada: false,
@@ -1190,6 +1352,47 @@ const MISSOES = [
         posX: 735,
         posY: 730,
         tipo: "principal"
+    }
+];
+
+// Missoes de operacao: "requisitos" usa os mesmos stats das cartas, que vao de 0 a 20.
+// Exemplo: requisitos: { forca: 3, vigor: 2 } pede uma equipe com soma aproximada desses atributos.
+const OPERACOES_MAPA = [
+    {
+        id: "resgate_universidade",
+        nome: "Resgate na Universidade",
+        descricao: "Houve um ataque bioterrista na universidade local. Sobreviventes estão sobre local instavel e precisam de extração urgente.",
+        posicao: { x: 530, y: 980 },
+        duracao: 60000,
+        recompensa: 120,
+        requisitos: { forca: 3, agilidade: 2 },
+        maxEquipe: 2,
+        cooldownFalha: 120000,
+        tempoFerimento: 180000
+    },
+    {
+        id: "varredura_laboratorio",
+        nome: "Varredura de Laboratorio",
+        descricao: "Um laboratorio abandonado ainda emite sinais biologicos instaveis.",
+        posicao: { x: 520, y: 610 },
+        duracao: 90000,
+        recompensa: 180,
+        requisitos: { inteligencia: 4, agilidade: 2 },
+        maxEquipe: 2,
+        cooldownFalha: 150000,
+        tempoFerimento: 210000
+    },
+    {
+        id: "escolta_suprimentos",
+        nome: "Escolta de Suprimentos",
+        descricao: "Uma rota curta pode render amostras valiosas se a equipe atravessar sem chamar atencao.",
+        posicao: { x: 680, y: 835 },
+        duracao: 45000,
+        recompensa: 90,
+        requisitos: { agilidade: 3, vigor: 1 },
+        maxEquipe: 2,
+        cooldownFalha: 90000,
+        tempoFerimento: 120000
     }
 ];
 
@@ -1344,6 +1547,20 @@ function obterMissaoPorId(idMissao) {
     return MISSOES.find((missao) => missao.id === idMissao);
 }
 
+function leitorTaticoOperacoesDesbloqueado() {
+    const missao01 = obterMissaoPorId("missao-01");
+
+    return Boolean(missao01 && missao01.concluida && missao01.recompensaAplicada);
+}
+
+function obterQuantidadeOperacoesFinalizadas() {
+    return new Set([
+        ...estadoOperacoes.concluidas,
+        ...estadoOperacoes.coletadas,
+        ...Object.keys(estadoOperacoes.resultados)
+    ]).size;
+}
+
 function carregarEstadoMissoesMapa() {
     const estadoSalvo = JSON.parse(localStorage.getItem(STORAGE_KEYS.missoesMapa));
 
@@ -1384,9 +1601,7 @@ function aplicarRecompensaMissao(missao, notificar = true) {
     }
 
     if (missao.id === "missao-01") {
-        dna += 200;
-        salvarDNA();
-        atualizarDNA();
+        // A recompensa e o desbloqueio do sistema de operacoes no mapa.
     }
 
     if (missao.id === "missao-02") {
@@ -1402,6 +1617,7 @@ function aplicarRecompensaMissao(missao, notificar = true) {
 
 function atualizarProgressoMissoesMapa(notificar = false) {
     const comunsNivel2 = obterQuantidadeComunsNoNivelMinimo(2);
+    const operacoesFinalizadas = obterQuantidadeOperacoesFinalizadas();
     const missao01 = obterMissaoPorId("missao-01");
     const missao02 = obterMissaoPorId("missao-02");
 
@@ -1420,7 +1636,7 @@ function atualizarProgressoMissoesMapa(notificar = false) {
 
         const estavaConcluida = missao02.concluida;
 
-        missao02.concluida = missao02.desbloqueada && comunsNivel2 >= 4;
+        missao02.concluida = missao02.desbloqueada && operacoesFinalizadas >= 3;
 
         if (missao02.concluida && (!estavaConcluida || !missao02.recompensaAplicada)) {
             aplicarRecompensaMissao(missao02, notificar);
@@ -1442,6 +1658,890 @@ function fecharModalMissao() {
     if (modal) {
         modal.remove();
     }
+}
+
+function operacaoEstaConcluida(operacao) {
+    return estadoOperacoes.concluidas.includes(operacao.id);
+}
+
+function operacaoFoiColetada(operacao) {
+    return estadoOperacoes.coletadas.includes(operacao.id);
+}
+
+function obterResultadoOperacaoConcluida(operacao) {
+    return estadoOperacoes.resultados[operacao.id] || null;
+}
+
+function operacaoEmCooldown(operacao) {
+    limparTemposExpiradosOperacoes();
+    return Boolean(estadoOperacoes.cooldowns[operacao.id]);
+}
+
+function operacaoEmAndamento(operacao) {
+    return estadoOperacoes.emAndamento[operacao.id] || null;
+}
+
+function operacaoEstaDisponivel(operacao) {
+    return !operacaoEstaConcluida(operacao) && !operacaoEmCooldown(operacao) && !operacaoEmAndamento(operacao);
+}
+
+function obterCartasDisponiveisOperacao() {
+    return carregarCartasSalvas().filter(cartaPodeSerDespachada);
+}
+
+const LABELS_STATS_OPERACAO = {
+    combate: "Combate",
+    forca: "Forca",
+    vigor: "Vigor",
+    inteligencia: "Inteligencia",
+    agilidade: "Agilidade"
+};
+
+const CHAVES_STATS_OPERACAO = ["combate", "forca", "vigor", "inteligencia", "agilidade"];
+
+function normalizarOperacoesAntigasComPesos() {
+    OPERACOES_MAPA.forEach((operacao) => {
+        if (operacao.requisitos || !operacao.pesos) {
+            return;
+        }
+
+        operacao.requisitos = Object.entries(operacao.pesos).reduce((requisitos, [stat, peso]) => {
+            requisitos[stat] = Math.max(0, Math.round(Number(peso) * 20));
+            return requisitos;
+        }, {});
+    });
+}
+
+function obterCartasPorNomes(nomesCartas) {
+    const cartasSalvas = carregarCartasSalvas();
+
+    return (nomesCartas || [])
+        .map((nomeCarta) => cartasSalvas.find((carta) => carta.nome === nomeCarta))
+        .filter(Boolean);
+}
+
+function calcularStatsEquipe(cartasEquipe) {
+    return cartasEquipe.reduce((statsEquipe, carta) => {
+        CHAVES_STATS_OPERACAO.forEach((stat) => {
+            const bonusLevel = 1 + ((Number(carta.level) || 1) - 1) * 0.14;
+            statsEquipe[stat] += Math.round((carta.stats?.[stat] || 0) * bonusLevel);
+        });
+
+        return statsEquipe;
+    }, { combate: 0, forca: 0, vigor: 0, inteligencia: 0, agilidade: 0 });
+}
+
+function calcularStatsRequisitosOperacao(operacao) {
+    return CHAVES_STATS_OPERACAO.reduce((stats, stat) => {
+        stats[stat] = Number(operacao.requisitos?.[stat]) || 0;
+        return stats;
+    }, { combate: 0, forca: 0, vigor: 0, inteligencia: 0, agilidade: 0 });
+}
+
+function obterStatsPrioritariosOperacao(operacao) {
+    const requisitos = calcularStatsRequisitosOperacao(operacao);
+
+    return Object.entries(requisitos)
+        .filter(([, valor]) => valor > 0)
+        .sort(([, valorA], [, valorB]) => valorB - valorA)
+        .slice(0, 2)
+        .map(([stat]) => stat);
+}
+
+function calcularChanceOperacao(operacao, cartasEquipe) {
+    if (!cartasEquipe.length) {
+        return 0;
+    }
+
+    const statsEquipe = calcularStatsEquipe(cartasEquipe);
+    const requisitos = calcularStatsRequisitosOperacao(operacao);
+    const requisitosAtivos = Object.entries(requisitos).filter(([, valor]) => valor > 0);
+
+    if (!requisitosAtivos.length) {
+        return 0.5;
+    }
+
+    const progressoMedio = requisitosAtivos.reduce((total, [stat, requisito]) => {
+        return total + Math.min((statsEquipe[stat] || 0) / requisito, 1);
+    }, 0) / requisitosAtivos.length;
+    const bonusExcedente = requisitosAtivos.reduce((total, [stat, requisito]) => {
+        return total + Math.max((statsEquipe[stat] || 0) - requisito, 0);
+    }, 0);
+
+    return Math.max(0.08, Math.min(0.95, 0.08 + progressoMedio * 0.78 + Math.min(bonusExcedente * 0.015, 0.09)));
+}
+
+function formatarChanceOperacao(chance) {
+    return `${Math.round(chance * 100)}%`;
+}
+
+function obterLeituraQualitativaOperacao(chance) {
+    if (chance >= 0.72) return "Leitura favoravel";
+    if (chance >= 0.48) return "Leitura instavel";
+    return "Leitura critica";
+}
+
+function criarDescricaoOperacaoComDicas(operacao) {
+    const descricao = document.createElement("p");
+    const prioridades = obterStatsPrioritariosOperacao(operacao);
+    const textoPrioridades = prioridades.map((stat) => `<strong>${LABELS_STATS_OPERACAO[stat]}</strong>`).join(" e ");
+    let textoDescricao = operacao.descricao;
+
+    prioridades.forEach((stat) => {
+        const label = LABELS_STATS_OPERACAO[stat];
+        const regex = new RegExp(`\\b(${label}|${stat})\\b`, "gi");
+        textoDescricao = textoDescricao.replace(regex, "<strong>$1</strong>");
+    });
+
+    descricao.innerHTML = `${textoDescricao} <span class="operacao-dica-stats">Leitura tática: ${textoPrioridades} parecem decisivos.</span>`;
+    return descricao;
+}
+
+function calcularPontosRadar(stats, escalaMaxima) {
+    const raio = 35;
+    const centro = 50;
+    const limite = Math.max(1, escalaMaxima);
+
+    return CHAVES_STATS_OPERACAO.map((chave, indice) => {
+        const valorVisual = Math.min((stats[chave] || 0) / limite, 1);
+        const angulo = (Math.PI * 2 * indice) / CHAVES_STATS_OPERACAO.length - Math.PI / 2;
+        const x = centro + raio * valorVisual * Math.cos(angulo);
+        const y = centro + raio * valorVisual * Math.sin(angulo);
+
+        return { x, y };
+    });
+}
+
+function formatarPontosRadar(pontos) {
+    return pontos.map((ponto) => `${ponto.x},${ponto.y}`).join(" ");
+}
+
+function atualizarPoligonoRadar(poligono, stats, escalaMaxima) {
+    poligono.setAttribute("points", formatarPontosRadar(calcularPontosRadar(stats, escalaMaxima)));
+}
+
+function gerarRadarOperacao(statsEquipe, opcoes = {}) {
+    const labels = ["Combate", "Forca", "Vigor", "Inteligencia", "Agilidade"];
+    const raio = 35;
+    const centro = 50;
+    const statsRequisito = opcoes.statsRequisito || null;
+    const revelarRequisito = Boolean(opcoes.revelarRequisito);
+    const maiorValor = Math.max(
+        10,
+        ...CHAVES_STATS_OPERACAO.map((chave) => statsEquipe[chave] || 0),
+        ...(statsRequisito ? CHAVES_STATS_OPERACAO.map((chave) => statsRequisito[chave] || 0) : [])
+    );
+    const pontosEquipe = calcularPontosRadar(statsEquipe, maiorValor);
+    const pontosRequisito = statsRequisito ? calcularPontosRadar(statsRequisito, maiorValor) : [];
+
+    const gridHtml = [0.25, 0.5, 0.75, 1].map((escala) => {
+        const pontosGrid = CHAVES_STATS_OPERACAO.map((_, indice) => {
+            const angulo = (Math.PI * 2 * indice) / CHAVES_STATS_OPERACAO.length - Math.PI / 2;
+            const x = centro + raio * escala * Math.cos(angulo);
+            const y = centro + raio * escala * Math.sin(angulo);
+
+            return `${x},${y}`;
+        });
+
+        return `<polygon points="${pontosGrid.join(" ")}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="0.5" />`;
+    }).join("");
+
+    const labelsHtml = CHAVES_STATS_OPERACAO.map((chave, indice) => {
+        const angulo = (Math.PI * 2 * indice) / CHAVES_STATS_OPERACAO.length - Math.PI / 2;
+        const x = centro + (raio + 11) * Math.cos(angulo);
+        const y = centro + (raio + 11) * Math.sin(angulo);
+
+        return `<text x="${x}" y="${y}" text-anchor="middle" dominant-baseline="central">${labels[indice]}</text>`;
+    }).join("");
+
+    return `
+        <svg viewBox="0 0 100 100" class="radar-chart radar-equipe-chart">
+            ${gridHtml}
+            ${revelarRequisito ? `<polygon points="${formatarPontosRadar(pontosRequisito)}" class="radar-polygon radar-requisito" />` : ""}
+            <polygon points="${formatarPontosRadar(pontosEquipe)}" class="radar-polygon radar-equipe-poligono" />
+            ${pontosEquipe.map((ponto) => `<circle cx="${ponto.x}" cy="${ponto.y}" r="1.2" class="radar-point" />`).join("")}
+            ${labelsHtml}
+        </svg>
+    `;
+}
+
+function criarPainelStatsEquipeOperacao(operacao, cartasEquipe) {
+    const painel = document.createElement("div");
+    const radarContainer = document.createElement("div");
+    const resumo = document.createElement("div");
+    const listaStats = document.createElement("div");
+    const chance = calcularChanceOperacao(operacao, cartasEquipe);
+    const statsEquipe = calcularStatsEquipe(cartasEquipe);
+    const maiorStatVisual = Math.max(8, ...CHAVES_STATS_OPERACAO.map((stat) => statsEquipe[stat] || 0));
+
+    painel.className = "operacao-stats-equipe";
+    radarContainer.className = "radar-container operacao-radar-container";
+    resumo.className = "operacao-analise-equipe";
+    listaStats.className = "operacao-stats-barras";
+    radarContainer.innerHTML = gerarRadarOperacao(statsEquipe);
+
+    resumo.innerHTML = `
+        <div class="operacao-leitura-box">
+            <span>Analise da equipe</span>
+            <strong>${obterLeituraQualitativaOperacao(chance)}</strong>
+        </div>
+    `;
+
+    CHAVES_STATS_OPERACAO.forEach((stat) => {
+        const item = document.createElement("div");
+        const valor = statsEquipe[stat] || 0;
+        const porcentagem = Math.min((valor / maiorStatVisual) * 100, 100);
+
+        item.className = "operacao-stat-barra";
+        item.innerHTML = `
+            <span class="operacao-stat-nome">${LABELS_STATS_OPERACAO[stat]}</span>
+            <div class="operacao-stat-trilho">
+                <div class="operacao-stat-preenchimento" style="width: ${porcentagem}%"></div>
+            </div>
+            <strong>${valor}</strong>
+        `;
+        listaStats.appendChild(item);
+    });
+
+    resumo.appendChild(listaStats);
+
+    painel.appendChild(radarContainer);
+    painel.appendChild(resumo);
+
+    return painel;
+}
+
+function sortearResultadoOperacao(operacao, cartasEquipe) {
+    const chance = calcularChanceOperacao(operacao, cartasEquipe);
+    const sucesso = Math.random() <= chance;
+
+    if (!sucesso) {
+        return "falha";
+    }
+
+    return Math.random() <= 0.12 + chance * 0.12 ? "critico" : "sucesso";
+}
+
+function aplicarResultadoOperacao(operacao, resultado, cartasNomes, notificar = true, momentoResultado = obterAgora()) {
+    delete estadoOperacoes.emAndamento[operacao.id];
+    let recompensaRecebida = 0;
+
+    if (resultado === "sucesso" || resultado === "critico") {
+        const recompensa = resultado === "critico" ? Math.round(operacao.recompensa * 1.5) : operacao.recompensa;
+        recompensaRecebida = recompensa;
+
+        if (!estadoOperacoes.concluidas.includes(operacao.id)) {
+            estadoOperacoes.concluidas.push(operacao.id);
+            dna += recompensa;
+            salvarDNA();
+            atualizarDNA();
+        }
+
+        estadoOperacoes.resultados[operacao.id] = {
+            resultado,
+            cartas: cartasNomes,
+            recompensaRecebida,
+            concluidaEm: momentoResultado,
+            requisitos: calcularStatsRequisitosOperacao(operacao)
+        };
+    } else {
+        estadoOperacoes.cooldowns[operacao.id] = momentoResultado + operacao.cooldownFalha;
+        cartasNomes.forEach((nomeCarta) => {
+            estadoOperacoes.ferimentos[nomeCarta] = momentoResultado + operacao.tempoFerimento;
+        });
+    }
+
+    limparTemposExpiradosOperacoes();
+    salvarEstadoOperacoesMapa();
+    recalcularBonusCartas();
+    mostrarCartas();
+    atualizarProgressoMissoesMapa(notificar);
+
+    if (notificar) {
+        if (resultado === "sucesso" || resultado === "critico") {
+            mostrarAvisoOperacao("Operacao concluida", `${operacao.nome} marcou um relatorio no mapa.`);
+        } else {
+            revelarResultadoOperacao(operacao, resultado, cartasNomes, recompensaRecebida);
+        }
+    }
+}
+
+function abrirResumoOperacaoConcluida(operacao) {
+    const resultadoSalvo = obterResultadoOperacaoConcluida(operacao);
+
+    if (!resultadoSalvo) {
+        revelarResultadoOperacao(operacao, "sucesso", [], 0);
+        removerOperacaoConcluidaDoMapa(operacao.id);
+        return;
+    }
+
+    revelarResultadoOperacao(
+        operacao,
+        resultadoSalvo.resultado,
+        resultadoSalvo.cartas || [],
+        Number(resultadoSalvo.recompensaRecebida) || 0
+    );
+    removerOperacaoConcluidaDoMapa(operacao.id);
+}
+
+function removerOperacaoConcluidaDoMapa(idOperacao) {
+    estadoOperacoes.concluidas = estadoOperacoes.concluidas.filter((id) => id !== idOperacao);
+    if (!estadoOperacoes.coletadas.includes(idOperacao)) {
+        estadoOperacoes.coletadas.push(idOperacao);
+    }
+    delete estadoOperacoes.resultados[idOperacao];
+    salvarEstadoOperacoesMapa();
+    atualizarProgressoMissoesMapa();
+}
+
+function revelarResultadoOperacao(operacao, resultado, cartasNomes, recompensaRecebida) {
+    const cartasEquipe = obterCartasPorNomes(cartasNomes);
+    const statsEquipe = calcularStatsEquipe(cartasEquipe);
+    const statsRequisito = calcularStatsRequisitosOperacao(operacao);
+    const modal = document.createElement("div");
+    const conteudo = document.createElement("div");
+    const botaoFechar = document.createElement("button");
+    const etiqueta = document.createElement("span");
+    const titulo = document.createElement("h2");
+    const resumo = document.createElement("p");
+    const radarWrap = document.createElement("div");
+    const legenda = document.createElement("div");
+    const cartas = document.createElement("div");
+    const recompensa = document.createElement("div");
+    const sucesso = resultado === "sucesso" || resultado === "critico";
+
+    fecharModalMissao();
+
+    modal.id = "modalMissao";
+    modal.className = "modal-missao";
+    conteudo.className = `modal-missao-conteudo modal-operacao-conteudo operacao-resultado ${sucesso ? "resultado-sucesso" : "resultado-falha"}`;
+    botaoFechar.className = "modal-missao-fechar";
+    etiqueta.className = "modal-missao-tipo tipo-operacao";
+    radarWrap.className = "operacao-radar-revelacao";
+    legenda.className = "operacao-radar-legenda";
+    cartas.className = "operacao-cartas-enviadas";
+    recompensa.className = "operacao-resultado-recompensa";
+
+    botaoFechar.type = "button";
+    botaoFechar.setAttribute("aria-label", "Fechar resultado da operacao");
+    botaoFechar.innerText = "X";
+    etiqueta.innerText = "Relatorio pos-operacao";
+    titulo.innerText = sucesso ? "Operacao concluida" : "Operacao comprometida";
+    resumo.innerText = sucesso
+        ? "A assinatura da equipe superou a pressao do setor. Requisitos taticos revelados."
+        : "A equipe ficou abaixo da assinatura exigida. Requisitos taticos revelados para reavaliacao.";
+    radarWrap.innerHTML = gerarRadarOperacao(statsEquipe, {
+        statsRequisito,
+        revelarRequisito: true
+    });
+    legenda.innerHTML = `
+        <span><i class="legenda-equipe"></i>Equipe enviada</span>
+        <span><i class="legenda-requisito"></i>Pressao da operacao</span>
+    `;
+    cartas.innerHTML = cartasEquipe.map((carta) => `
+        <div class="operacao-carta-enviada ${obterClasseRaridade(carta.raridade)}">
+            <img src="${carta.imagem}" alt="${carta.nome}">
+            <span>${carta.nome} Lv.${carta.level}</span>
+        </div>
+    `).join("");
+    recompensa.innerText = sucesso
+        ? `Recompensa obtida: ${formatarNumero(recompensaRecebida)} DNA`
+        : "Equipe ferida. Operacao em cooldown.";
+
+    conteudo.appendChild(botaoFechar);
+    conteudo.appendChild(etiqueta);
+    conteudo.appendChild(titulo);
+    conteudo.appendChild(resumo);
+    conteudo.appendChild(radarWrap);
+    conteudo.appendChild(legenda);
+    conteudo.appendChild(cartas);
+    conteudo.appendChild(recompensa);
+    modal.appendChild(conteudo);
+    document.body.appendChild(modal);
+
+    requestAnimationFrame(() => {
+        conteudo.classList.add("resultado-revelado");
+    });
+
+    botaoFechar.addEventListener("click", fecharModalMissao);
+    modal.addEventListener("click", (evento) => {
+        if (evento.target === modal) {
+            fecharModalMissao();
+        }
+    });
+}
+
+function resolverOperacoesExpiradas() {
+    Object.entries(estadoOperacoes.emAndamento).forEach(([idOperacao, dados]) => {
+        const operacao = obterOperacaoPorId(idOperacao);
+
+        if (operacao && Number(dados.terminaEm) <= obterAgora()) {
+            aplicarResultadoOperacao(operacao, dados.resultado, dados.cartas || [], false, Number(dados.terminaEm));
+        }
+    });
+}
+
+function agendarOperacoesEmAndamento() {
+    Object.entries(estadoOperacoes.emAndamento).forEach(([idOperacao, dados]) => {
+        const operacao = obterOperacaoPorId(idOperacao);
+
+        if (!operacao) {
+            return;
+        }
+
+        const tempoRestante = obterTempoRestanteMs(dados.terminaEm);
+
+        window.setTimeout(() => {
+            aplicarResultadoOperacao(operacao, dados.resultado, dados.cartas || []);
+            fecharModalMissao();
+        }, tempoRestante);
+    });
+}
+
+function iniciarMonitorOperacoes() {
+    window.setInterval(() => {
+        const estadoAnterior = JSON.stringify({
+            cooldowns: estadoOperacoes.cooldowns,
+            ferimentos: estadoOperacoes.ferimentos
+        });
+
+        limparTemposExpiradosOperacoes();
+
+        if (estadoAnterior !== JSON.stringify({
+            cooldowns: estadoOperacoes.cooldowns,
+            ferimentos: estadoOperacoes.ferimentos
+        })) {
+            salvarEstadoOperacoesMapa();
+            recalcularBonusCartas();
+            mostrarCartas();
+
+            const mapa = document.getElementById("conteudoMapa");
+            if (mapa) {
+                renderizarMissoesNoMapa(mapa);
+            }
+        }
+    }, 1000);
+}
+
+function mostrarAvisoOperacao(tituloTexto, mensagemTexto) {
+    const container = garantirContainerAvisos();
+    const aviso = document.createElement("div");
+    const icone = document.createElement("div");
+    const conteudo = document.createElement("div");
+    const titulo = document.createElement("strong");
+    const mensagem = document.createElement("p");
+
+    aviso.className = "aviso-desbloqueio aviso-operacao";
+    icone.className = "aviso-icone aviso-icone-operacao";
+    conteudo.className = "aviso-conteudo";
+    titulo.className = "aviso-titulo";
+    mensagem.className = "aviso-mensagem";
+
+    icone.innerText = "";
+    titulo.innerText = tituloTexto;
+    mensagem.innerText = mensagemTexto;
+
+    conteudo.appendChild(titulo);
+    conteudo.appendChild(mensagem);
+    aviso.appendChild(icone);
+    aviso.appendChild(conteudo);
+    container.appendChild(aviso);
+
+    requestAnimationFrame(() => aviso.classList.add("visivel"));
+    setTimeout(() => aviso.classList.add("saindo"), 3600);
+    setTimeout(() => aviso.remove(), 4300);
+}
+
+function curarCartaFerida(nomeCarta) {
+    const custoCura = 75;
+
+    if (!cartaEstaFerida(nomeCarta)) {
+        return;
+    }
+
+    if (dna < custoCura) {
+        alert("DNA insuficiente para curar esta carta.");
+        return;
+    }
+
+    dna -= custoCura;
+    delete estadoOperacoes.ferimentos[nomeCarta];
+    salvarDNA();
+    salvarEstadoOperacoesMapa();
+    atualizarDNA();
+    recalcularBonusCartas();
+    mostrarCartas();
+    fecharModalCarta();
+    mostrarAvisoOperacao("Carta recuperada", `${nomeCarta} voltou para a equipe ativa.`);
+}
+
+function criarMiniCartaOperacao(carta) {
+    const card = document.createElement("div");
+    const imagem = document.createElement("img");
+    const nome = document.createElement("span");
+
+    card.className = `operacao-mini-carta ${obterClasseRaridade(carta.raridade)}`;
+    card.draggable = true;
+    card.dataset.cartaNome = carta.nome;
+    imagem.src = carta.imagem;
+    imagem.alt = carta.nome;
+    nome.innerText = `${carta.nome} Lv.${carta.level}`;
+
+    card.appendChild(imagem);
+    card.appendChild(nome);
+    card.addEventListener("dragstart", (evento) => {
+        evento.dataTransfer.setData("text/plain", carta.nome);
+        evento.dataTransfer.effectAllowed = "move";
+        card.classList.add("carta-arrastando");
+    });
+    card.addEventListener("dragend", () => card.classList.remove("carta-arrastando"));
+
+    return card;
+}
+
+function criarMarcadorOperacao(operacao) {
+    const marcador = document.createElement("button");
+    const icone = document.createElement("span");
+    const andamento = operacaoEmAndamento(operacao);
+    const concluida = operacaoEstaConcluida(operacao);
+
+    marcador.type = "button";
+    marcador.className = `marcador-missao ${TIPOS_MISSAO.operacao.classe}`;
+    marcador.classList.toggle("missao-bloqueada", operacaoEmCooldown(operacao));
+    marcador.classList.toggle("missao-em-andamento", Boolean(andamento));
+    marcador.classList.toggle("missao-concluida", concluida);
+    marcador.style.left = `${(operacao.posicao.x / MAPA_BASE_LARGURA) * 100}%`;
+    marcador.style.top = `${(operacao.posicao.y / MAPA_BASE_ALTURA) * 100}%`;
+    marcador.setAttribute("aria-label", concluida ? `Abrir relatorio de ${operacao.nome}` : `Abrir ${operacao.nome}`);
+    marcador.dataset.operacaoId = operacao.id;
+
+    icone.className = "marcador-missao-icone";
+    icone.innerText = concluida ? "✓" : TIPOS_MISSAO.operacao.simbolo;
+    marcador.appendChild(icone);
+    marcador.addEventListener("click", () => {
+        if (concluida) {
+            abrirResumoOperacaoConcluida(operacao);
+            return;
+        }
+
+        abrirModalOperacao(operacao);
+    });
+
+    return marcador;
+}
+
+function abrirModalOperacao(operacao) {
+    const cartasSelecionadas = [];
+    const andamento = operacaoEmAndamento(operacao);
+    const cooldown = estadoOperacoes.cooldowns[operacao.id];
+
+    fecharModalMissao();
+
+    const modal = document.createElement("div");
+    const conteudo = document.createElement("div");
+    const botaoFechar = document.createElement("button");
+    const topo = document.createElement("div");
+    const topoTexto = document.createElement("div");
+    const meta = document.createElement("div");
+    const corpo = document.createElement("div");
+    const painelAnalise = document.createElement("section");
+    const painelEquipe = document.createElement("section");
+    const tituloAnalise = document.createElement("h3");
+    const tituloEquipe = document.createElement("h3");
+    const tipoElemento = document.createElement("span");
+    const status = document.createElement("span");
+    const titulo = document.createElement("h2");
+    const descricao = criarDescricaoOperacaoComDicas(operacao);
+    const recompensaBox = document.createElement("div");
+    const recompensaLabel = document.createElement("span");
+    const recompensaValor = document.createElement("strong");
+    const statsEquipeContainer = document.createElement("div");
+    const slots = document.createElement("div");
+    const listaCartas = document.createElement("div");
+    const andamentoBox = document.createElement("div");
+    const feedback = document.createElement("p");
+    const botaoDespachar = document.createElement("button");
+    const dispatch = document.createElement("div");
+
+    modal.id = "modalMissao";
+    modal.className = "modal-missao";
+    conteudo.className = "modal-missao-conteudo modal-operacao-conteudo";
+    botaoFechar.className = "modal-missao-fechar";
+    topo.className = "operacao-topo";
+    topoTexto.className = "operacao-topo-texto";
+    meta.className = "operacao-meta";
+    corpo.className = "operacao-corpo";
+    painelAnalise.className = "operacao-painel operacao-painel-analise";
+    painelEquipe.className = "operacao-painel operacao-painel-equipe";
+    tipoElemento.className = "modal-missao-tipo tipo-operacao";
+    status.className = "modal-missao-status status-operacao";
+    recompensaBox.className = "modal-missao-recompensa operacao-recompensa";
+    recompensaLabel.className = "modal-missao-recompensa-label";
+    recompensaValor.className = "modal-missao-recompensa-valor";
+    statsEquipeContainer.className = "operacao-stats-container";
+    slots.className = "operacao-slots";
+    listaCartas.className = "operacao-cartas-disponiveis";
+    andamentoBox.className = "operacao-andamento-box";
+    feedback.className = "operacao-feedback";
+    botaoDespachar.className = "operacao-despachar";
+    dispatch.className = "operacao-dispatch";
+
+    botaoFechar.type = "button";
+    botaoFechar.setAttribute("aria-label", "Fechar operacao");
+    botaoFechar.innerText = "X";
+    tipoElemento.innerText = "Missao de Operacao";
+    titulo.innerText = operacao.nome;
+    tituloAnalise.innerText = "Analise da equipe";
+    tituloEquipe.innerText = andamento ? "Equipe enviada" : "Sua equipe";
+    recompensaLabel.innerText = "Recompensa";
+    recompensaValor.innerText = `${formatarNumero(operacao.recompensa)} DNA`;
+    botaoDespachar.type = "button";
+    botaoDespachar.innerText = "Despachar equipe";
+
+    if (andamento) {
+        status.innerText = `Em andamento - ${formatarTempoCurto(obterTempoRestanteMs(andamento.terminaEm))}`;
+        botaoDespachar.disabled = true;
+    } else if (cooldown) {
+        status.innerText = `Bloqueada - ${formatarTempoCurto(obterTempoRestanteMs(cooldown))}`;
+        botaoDespachar.disabled = true;
+    } else {
+        status.innerText = "Disponivel";
+    }
+
+    function renderizarStatsEquipe() {
+        const cartasEquipe = obterCartasPorNomes(cartasSelecionadas);
+
+        statsEquipeContainer.innerHTML = "";
+        statsEquipeContainer.appendChild(criarPainelStatsEquipeOperacao(operacao, cartasEquipe));
+    }
+
+    function renderizarAndamento() {
+        if (!andamento) {
+            return;
+        }
+
+        const cartasEnviadas = obterCartasPorNomes(andamento.cartas);
+        const chance = typeof andamento.chance === "number"
+            ? andamento.chance
+            : calcularChanceOperacao(operacao, cartasEnviadas);
+        const tempoRestante = formatarTempoCurto(obterTempoRestanteMs(andamento.terminaEm));
+        const cartasHtml = cartasEnviadas.map((carta) => `
+            <div class="operacao-carta-enviada ${obterClasseRaridade(carta.raridade)}">
+                <img src="${carta.imagem}" alt="${carta.nome}">
+                <span>${carta.nome} Lv.${carta.level}</span>
+            </div>
+        `).join("");
+
+        andamentoBox.innerHTML = `
+            <div class="operacao-andamento-cabecalho">
+                <span>Em andamento</span>
+                <strong class="operacao-tempo-restante">${tempoRestante}</strong>
+            </div>
+            <div class="operacao-andamento-chance">
+                <span>Telemetria</span>
+                <strong>${obterLeituraQualitativaOperacao(chance)}</strong>
+            </div>
+        `;
+        listaCartas.classList.add("operacao-cartas-enviadas");
+        listaCartas.innerHTML = cartasHtml;
+        andamentoBox.appendChild(criarPainelStatsEquipeOperacao(operacao, cartasEnviadas));
+
+        const tempoElemento = andamentoBox.querySelector(".operacao-tempo-restante");
+        const intervaloTempo = window.setInterval(() => {
+            if (!document.body.contains(modal)) {
+                window.clearInterval(intervaloTempo);
+                return;
+            }
+
+            tempoElemento.innerText = formatarTempoCurto(obterTempoRestanteMs(andamento.terminaEm));
+        }, 1000);
+    }
+
+    function renderizarSlots() {
+        slots.innerHTML = "";
+
+        for (let indice = 0; indice < operacao.maxEquipe; indice += 1) {
+            const slot = document.createElement("div");
+            const nomeCarta = cartasSelecionadas[indice];
+
+            slot.className = "operacao-slot";
+            slot.dataset.slotIndex = String(indice);
+
+            if (nomeCarta) {
+                const carta = carregarCartasSalvas().find((item) => item.nome === nomeCarta);
+                slot.classList.add("ocupado");
+                slot.innerHTML = `<img src="${carta.imagem}" alt="${carta.nome}"><span>${carta.nome}</span>`;
+                slot.addEventListener("click", () => {
+                    cartasSelecionadas.splice(indice, 1);
+                    renderizarSlots();
+                    renderizarCartasDisponiveis();
+                    renderizarStatsEquipe();
+                });
+            } else {
+                slot.innerHTML = '<span class="operacao-slot-plus">+</span><span>Adicionar carta</span>';
+            }
+
+            slot.addEventListener("dragover", (evento) => {
+                evento.preventDefault();
+                slot.classList.add("recebendo");
+            });
+            slot.addEventListener("dragleave", () => slot.classList.remove("recebendo"));
+            slot.addEventListener("drop", (evento) => {
+                evento.preventDefault();
+                slot.classList.remove("recebendo");
+                adicionarCartaNaEquipe(evento.dataTransfer.getData("text/plain"));
+            });
+
+            slots.appendChild(slot);
+        }
+
+        botaoDespachar.disabled = !operacaoEstaDisponivel(operacao) || cartasSelecionadas.length === 0;
+    }
+
+    function renderizarCartasDisponiveis() {
+        listaCartas.innerHTML = "";
+
+        obterCartasDisponiveisOperacao()
+            .filter((carta) => !cartasSelecionadas.includes(carta.nome))
+            .forEach((carta) => listaCartas.appendChild(criarMiniCartaOperacao(carta)));
+
+        if (!listaCartas.children.length) {
+            listaCartas.innerHTML = '<span class="operacao-sem-cartas">Nenhuma carta disponivel.</span>';
+        }
+    }
+
+    function adicionarCartaNaEquipe(nomeCarta) {
+        const carta = carregarCartasSalvas().find((item) => item.nome === nomeCarta);
+
+        if (!carta || !cartaPodeSerDespachada(carta) || cartasSelecionadas.includes(nomeCarta)) {
+            return;
+        }
+
+        if (cartasSelecionadas.length >= operacao.maxEquipe) {
+            feedback.innerText = `Equipe limitada a ${operacao.maxEquipe} cartas.`;
+            return;
+        }
+
+        cartasSelecionadas.push(nomeCarta);
+        feedback.innerText = "";
+        renderizarSlots();
+        renderizarCartasDisponiveis();
+        renderizarStatsEquipe();
+    }
+
+    function iniciarOperacao() {
+        const cartasEquipe = cartasSelecionadas
+            .map((nomeCarta) => carregarCartasSalvas().find((carta) => carta.nome === nomeCarta))
+            .filter(Boolean);
+
+        if (!cartasEquipe.length || !operacaoEstaDisponivel(operacao)) {
+            return;
+        }
+
+        const resultado = sortearResultadoOperacao(operacao, cartasEquipe);
+        const chance = calcularChanceOperacao(operacao, cartasEquipe);
+        estadoOperacoes.emAndamento[operacao.id] = {
+            cartas: cartasEquipe.map((carta) => carta.nome),
+            inicioEm: obterAgora(),
+            terminaEm: obterAgora() + operacao.duracao,
+            chance,
+            resultado
+        };
+        salvarEstadoOperacoesMapa();
+        recalcularBonusCartas();
+        mostrarCartas();
+        const mapa = document.getElementById("conteudoMapa");
+        if (mapa) {
+            renderizarMissoesNoMapa(mapa);
+        }
+        botaoDespachar.disabled = true;
+        window.setTimeout(() => {
+            aplicarResultadoOperacao(operacao, resultado, cartasEquipe.map((carta) => carta.nome));
+        }, operacao.duracao);
+        animarDispatch(conteudo, dispatch, fecharModalMissao);
+    }
+
+    recompensaBox.appendChild(recompensaLabel);
+    recompensaBox.appendChild(recompensaValor);
+    conteudo.appendChild(botaoFechar);
+    meta.appendChild(tipoElemento);
+    meta.appendChild(status);
+    topoTexto.appendChild(meta);
+    topoTexto.appendChild(titulo);
+    topoTexto.appendChild(descricao);
+    topo.appendChild(topoTexto);
+    topo.appendChild(recompensaBox);
+    conteudo.appendChild(topo);
+    if (andamento) {
+        painelAnalise.appendChild(tituloAnalise);
+        painelAnalise.appendChild(andamentoBox);
+        corpo.appendChild(painelAnalise);
+    } else {
+        painelAnalise.appendChild(tituloAnalise);
+        painelAnalise.appendChild(statsEquipeContainer);
+        painelEquipe.appendChild(tituloEquipe);
+        painelEquipe.appendChild(slots);
+        painelEquipe.appendChild(listaCartas);
+        corpo.appendChild(painelAnalise);
+        corpo.appendChild(painelEquipe);
+        conteudo.appendChild(corpo);
+        conteudo.appendChild(feedback);
+        conteudo.appendChild(botaoDespachar);
+        conteudo.appendChild(dispatch);
+    }
+    if (andamento) {
+        painelEquipe.appendChild(tituloEquipe);
+        painelEquipe.appendChild(listaCartas);
+        corpo.appendChild(painelEquipe);
+        conteudo.appendChild(corpo);
+    }
+    modal.appendChild(conteudo);
+    document.body.appendChild(modal);
+
+    if (andamento) {
+        renderizarAndamento();
+    } else {
+        renderizarSlots();
+        renderizarCartasDisponiveis();
+        renderizarStatsEquipe();
+    }
+
+    botaoFechar.addEventListener("click", fecharModalMissao);
+    botaoDespachar.addEventListener("click", iniciarOperacao);
+    modal.addEventListener("click", (evento) => {
+        if (evento.target === modal) {
+            fecharModalMissao();
+        }
+    });
+}
+
+function animarDispatch(conteudo, container, aoTerminar) {
+    const mensagens = [
+        "Conectando com equipe...",
+        "Definindo rota...",
+        "Enviando agentes...",
+        "Executando operacao..."
+    ];
+
+    conteudo.classList.add("operacao-em-dispatch");
+    container.classList.add("ativo");
+    container.innerHTML = "";
+
+    mensagens.forEach((texto, indice) => {
+        window.setTimeout(() => {
+            const linha = document.createElement("span");
+            linha.innerText = texto;
+            container.appendChild(linha);
+
+            if (indice === mensagens.length - 1) {
+                window.setTimeout(aoTerminar, 650);
+            }
+        }, indice * 650);
+    });
+}
+
+function executarAnimacaoDispatch(container, aoTerminar) {
+    animarDispatch(container.closest(".modal-operacao-conteudo") || container, container, aoTerminar);
 }
 
 function abrirModalMissao(missao) {
@@ -1536,9 +2636,19 @@ function renderizarMissoesNoMapa(mapa) {
     const camadaMissoes = document.createElement("div");
     camadaMissoes.className = "mapa-missoes";
 
-    MISSOES.forEach((missao) => {
-        camadaMissoes.appendChild(criarMarcadorMissao(missao));
-    });
+    MISSOES
+        .filter((missao) => !missao.concluida)
+        .forEach((missao) => {
+            camadaMissoes.appendChild(criarMarcadorMissao(missao));
+        });
+
+    if (leitorTaticoOperacoesDesbloqueado()) {
+        OPERACOES_MAPA
+            .filter((operacao) => !operacaoFoiColetada(operacao))
+            .forEach((operacao) => {
+                camadaMissoes.appendChild(criarMarcadorOperacao(operacao));
+            });
+    }
 
     mapa.appendChild(camadaMissoes);
 }
@@ -1659,6 +2769,8 @@ document.addEventListener("DOMContentLoaded", () => {
     carregarPrecosPacks();
     carregarPacksDesbloqueados();
     carregarEstadoMissoesMapa();
+    normalizarOperacoesAntigasComPesos();
+    carregarEstadoOperacoesMapa();
     recalcularBonusCartas();
     atualizarDNA();
     atualizarInterfaceBonus();
@@ -1670,5 +2782,7 @@ document.addEventListener("DOMContentLoaded", () => {
     inicializarFiltroInventario();
     inicializarMapaInterativo();
     inicializarOrganizacao();
+    agendarOperacoesEmAndamento();
+    iniciarMonitorOperacoes();
     mostrarCartas();
 });
