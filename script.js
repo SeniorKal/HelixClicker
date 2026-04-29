@@ -532,6 +532,13 @@ function obterTempoRestanteMs(terminaEm) {
     return Math.max(0, Number(terminaEm) - obterAgora());
 }
 
+function obterPorcentagemRestanteOperacao(operacao, andamento) {
+    const duracao = Math.max(1, Number(operacao.duracao) || Number(andamento.terminaEm) - Number(andamento.inicioEm) || 1);
+    const restante = obterTempoRestanteMs(andamento.terminaEm);
+
+    return Math.max(0, Math.min(100, (restante / duracao) * 100));
+}
+
 function formatarTempoCurto(ms) {
     const segundosTotais = Math.ceil(ms / 1000);
     const minutos = Math.floor(segundosTotais / 60);
@@ -2120,6 +2127,8 @@ function iniciarMonitorOperacoes() {
                 renderizarMissoesNoMapa(mapa);
             }
         }
+
+        atualizarIndicadoresOperacoesMapa();
     }, 1000);
 }
 
@@ -2215,6 +2224,14 @@ function criarMarcadorOperacao(operacao) {
     marcador.setAttribute("aria-label", concluida ? `Abrir relatorio de ${operacao.nome}` : `Abrir ${operacao.nome}`);
     marcador.dataset.operacaoId = operacao.id;
 
+    if (andamento) {
+        const tempoRestante = obterTempoRestanteMs(andamento.terminaEm);
+
+        marcador.style.setProperty("--operacao-restante", `${obterPorcentagemRestanteOperacao(operacao, andamento)}%`);
+        marcador.title = `${operacao.nome}: ${formatarTempoCurto(tempoRestante)} restantes`;
+        marcador.setAttribute("aria-label", `${operacao.nome} em andamento, ${formatarTempoCurto(tempoRestante)} restantes`);
+    }
+
     icone.className = "marcador-missao-icone";
     icone.innerText = concluida ? "✓" : TIPOS_MISSAO.operacao.simbolo;
     marcador.appendChild(icone);
@@ -2228,6 +2245,23 @@ function criarMarcadorOperacao(operacao) {
     });
 
     return marcador;
+}
+
+function atualizarIndicadoresOperacoesMapa() {
+    document.querySelectorAll(".marcador-missao.missao-operacao.missao-em-andamento").forEach((marcador) => {
+        const operacao = obterOperacaoPorId(marcador.dataset.operacaoId);
+        const andamento = operacao ? operacaoEmAndamento(operacao) : null;
+
+        if (!operacao || !andamento) {
+            return;
+        }
+
+        const tempoRestante = obterTempoRestanteMs(andamento.terminaEm);
+
+        marcador.style.setProperty("--operacao-restante", `${obterPorcentagemRestanteOperacao(operacao, andamento)}%`);
+        marcador.title = `${operacao.nome}: ${formatarTempoCurto(tempoRestante)} restantes`;
+        marcador.setAttribute("aria-label", `${operacao.nome} em andamento, ${formatarTempoCurto(tempoRestante)} restantes`);
+    });
 }
 
 function abrirModalOperacao(operacao) {

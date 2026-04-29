@@ -511,7 +511,34 @@ button:hover {
 }
 
 .marcador-missao.missao-em-andamento {
+    --operacao-restante: 100%;
     animation: pulso-operacao 1.5s ease-in-out infinite;
+    isolation: isolate;
+}
+
+.marcador-missao.missao-em-andamento::before {
+    content: "";
+    position: absolute;
+    inset: -7px;
+    z-index: -1;
+    border-radius: inherit;
+    background:
+        conic-gradient(from -90deg, #5df0cf var(--operacao-restante), rgba(255, 255, 255, 0.24) 0),
+        radial-gradient(circle, rgba(8, 28, 42, 0.58) 57%, transparent 59%);
+    box-shadow:
+        0 0 0 2px rgba(255, 255, 255, 0.86),
+        0 0 16px rgba(93, 240, 207, 0.58);
+    pointer-events: none;
+}
+
+.marcador-missao.missao-em-andamento::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    z-index: -1;
+    border-radius: inherit;
+    background: rgba(5, 19, 32, 0.34);
+    pointer-events: none;
 }
 
 .marcador-missao.missao-concluida {
