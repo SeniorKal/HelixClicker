@@ -24,8 +24,8 @@ const PACKS_LOJA = [
         id: "pack-prata",
         nome: "Pack Prata",
         imagem: "images/Pack1.png",
-        // OBS: altere aqui o preco inicial manual de cada pack.
         custo: 5,
+        custoMaximo: 2000,
         desbloqueadoPorPadrao: true,
         chances: [
             { raridade: "comum", chance: 100 },
@@ -36,11 +36,12 @@ const PACKS_LOJA = [
         nome: "Pack Ouro",
         imagem: "images/Pack2.png",
         custo: 500,
+        custoMaximo: 5000,
         desbloqueadoPorPadrao: false,
         chances: [
-            { raridade: "comum", chance: 65 },
-            { raridade: "raro", chance: 25 },
-            { raridade: "epico", chance: 10 }
+            { raridade: "comum", chance: 50 },
+            { raridade: "raro", chance: 45 },
+            { raridade: "epico", chance: 5 }
         ]
     },
     {
@@ -48,6 +49,7 @@ const PACKS_LOJA = [
         nome: "Pack Especial",
         imagem: "images/Pack3.png",
         custo: 5000,
+        custoMaximo: 50000,
         desbloqueadoPorPadrao: false,
         chances: [
             { raridade: "raro", chance: 50 },
@@ -102,13 +104,26 @@ function criarPacksDesbloqueadosPadrao() {
     return PACKS_LOJA.map((pack) => Boolean(pack.desbloqueadoPorPadrao));
 }
 
+function obterCustoPackDentroDoLimite(pack, custo) {
+    const custoNumerico = Number(custo);
+    const custoAtual = Number.isFinite(custoNumerico) ? custoNumerico : pack.custo;
+    const custoMaximo = Number(pack.custoMaximo);
+
+    if (!Number.isFinite(custoMaximo) || custoMaximo <= 0) {
+        return Math.max(0, Math.round(custoAtual));
+    }
+
+    return Math.min(custoMaximo, Math.max(0, Math.round(custoAtual)));
+}
+
 function carregarPrecosPacks() {
     const precosSalvos = JSON.parse(localStorage.getItem(STORAGE_KEYS.precosPacks));
 
     if (Array.isArray(precosSalvos) && precosSalvos.length === PACKS_LOJA.length) {
         PACKS_LOJA.forEach((pack, index) => {
-            pack.custo = precosSalvos[index];
+            pack.custo = obterCustoPackDentroDoLimite(pack, precosSalvos[index]);
         });
+        salvarPrecosPacks();
         return;
     }
 
@@ -800,7 +815,7 @@ function abrirPack() {
 
 function aumentarPrecoPackAtual() {
     const packAtual = PACKS_LOJA[packSelecionadoIndex];
-    packAtual.custo = Math.round(packAtual.custo * 1.1);
+    packAtual.custo = obterCustoPackDentroDoLimite(packAtual, packAtual.custo * 1.1);
     salvarPrecosPacks();
 }
 
@@ -1331,6 +1346,11 @@ const TIPOS_MISSAO = {
         nome: "Missao de Operacao",
         simbolo: "!",
         classe: "missao-operacao"
+    },
+    boss: {
+        nome: "Missao Boss",
+        simbolo: "!",
+        classe: "missao-operacao missao-boss"
     }
 };
 
@@ -1350,27 +1370,37 @@ const MISSOES = [
     },
     {
         id: "missao-02",
-        nome: "Unidade aprimorada",
+        nome: "Campo de Testes",
         descricao: "O leitor tatico revelou focos de risco pela cidade. Conclua 3 missoes de operacao para validar os protocolos de campo e abrir uma nova rota de suprimentos.",
-        recompensa: "Desbloqueia Pack Ouro",
+        recompensa: "Desbloqueia Area 2 do mapa",
         concluida: false,
         desbloqueada: false,
         recompensaAplicada: false,
         posX: 735,
         posY: 730,
         tipo: "principal"
+    },
+    {
+        id: "missao-03",
+        nome: "Novos Horizontes",
+        descricao: "Brian Irons notou a nossa organização e ofereceu um acordo: acesso a equipe de taticas especiais em troca de um serviço 'confidencial'. Conclua Operação Irons.",
+        recompensa: "Pacote Ouro",
+        concluida: false,
+        desbloqueada: false,
+        recompensaAplicada: false,
+        posX: 370,
+        posY: 895,
+        tipo: "principal"
     }
 ];
 
-// Missoes de operacao: "requisitos" usa os mesmos stats das cartas, que vao de 0 a 20.
-// Exemplo: requisitos: { forca: 3, vigor: 2 } pede uma equipe com soma aproximada desses atributos.
 const OPERACOES_MAPA = [
     {
         id: "resgate_universidade",
         nome: "Resgate na Universidade",
         descricao: "Houve um ataque bioterrista na universidade local. Sobreviventes estão sobre local instavel e precisam de extração urgente.",
         posicao: { x: 530, y: 980 },
-        duracao: 60000,
+        duracao: 35000,
         recompensa: 120,
         requisitos: { forca: 3, agilidade: 3 },
         maxEquipe: 2,
@@ -1382,7 +1412,7 @@ const OPERACOES_MAPA = [
         nome: "Limpeza na Substação",
         descricao: "Uma infestação de aracnideos tomou conta do local, o ar esta contaminado e a eletricidade instavel. A equipe deve eliminar a ameaça e estabilizar o ambiente.",
         posicao: { x: 520, y: 870 },
-        duracao: 90000,
+        duracao: 40000,
         recompensa: 180,
         requisitos: { combate: 3, vigor: 3 },
         maxEquipe: 2,
@@ -1394,12 +1424,39 @@ const OPERACOES_MAPA = [
         nome: "Contaminação no Rio",
         descricao: "Um virus contaminou o rio que abastece a cidade. A equipe deve coletar amostras, identificar o agente patogeno e conter a propagação.",
         posicao: { x: 650, y: 850 },
-        duracao: 45000,
+        duracao: 40000,
         recompensa: 90,
         requisitos: { inteligencia: 3, vigor: 3, agilidade: 1 },
         maxEquipe: 2,
         cooldownFalha: 90000,
         tempoFerimento: 120000
+    },
+    {
+        id: "irons",
+        nome: "Operação Irons",
+        descricao: "Recupere os suprimentos confidenciais da policia, temos liberdade para eliminar qualquer inimigo possivel na área",
+        areaRequerida: "area-2",
+        posicao: { x: 190, y: 1000 },
+        duracao: 50000,
+        recompensa: 90,
+        requisitos: { combate: 5, inteligencia: 3, vigor: 2, agilidade: 4},
+        maxEquipe: 3,
+        cooldownFalha: 90000,
+        tempoFerimento: 120000
+    },
+    {
+        id: "boss-01",
+        nome: "B.O.W Detectado - Peçonhenta",
+        tipo: "boss",
+        descricao: "Uma criatura mutante foi detectada nas profundezas da área contaminada. Ela se move silenciosamente entre os destroços, atacando com precisão letal e espalhando toxinas pelo ambiente. Equipes enviadas anteriormente não retornaram.",
+        areaRequerida: "area-1",
+        posicao: { x: 780, y: 980 },
+        duracao: 60000,
+        recompensa: 90000,
+        requisitos: { combate: 9, forca: 7, vigor: 8, agilidade: 5, inteligencia: 3 },
+        maxEquipe: 3,
+        cooldownFalha: 120000,
+        tempoFerimento: 180000
     }
 ];
 
@@ -1554,6 +1611,11 @@ function obterMissaoPorId(idMissao) {
     return MISSOES.find((missao) => missao.id === idMissao);
 }
 
+function areaMapaLiberada(areaId) {
+    const area = AREAS_MAPA.find((item) => item.id === areaId);
+    return Boolean(area && area.liberada);
+}
+
 function leitorTaticoOperacoesDesbloqueado() {
     const missao01 = obterMissaoPorId("missao-01");
 
@@ -1566,6 +1628,32 @@ function obterQuantidadeOperacoesFinalizadas() {
         ...estadoOperacoes.coletadas,
         ...Object.keys(estadoOperacoes.resultados)
     ]).size;
+}
+
+function operacaoFoiFinalizada(idOperacao) {
+    return estadoOperacoes.concluidas.includes(idOperacao)
+        || estadoOperacoes.coletadas.includes(idOperacao)
+        || Boolean(estadoOperacoes.resultados[idOperacao]);
+}
+
+function operacaoEstaDesbloqueadaNoMapa(operacao) {
+    return !operacao.areaRequerida || areaMapaLiberada(operacao.areaRequerida);
+}
+
+function requisitoMissaoCompleto(idMissao) {
+    if (idMissao === "missao-01") {
+        return obterQuantidadeComunsNoNivelMinimo(2) >= 2;
+    }
+
+    if (idMissao === "missao-02") {
+        return obterQuantidadeOperacoesFinalizadas() >= 3;
+    }
+
+    if (idMissao === "missao-03") {
+        return operacaoFoiFinalizada("irons");
+    }
+
+    return false;
 }
 
 function carregarEstadoMissoesMapa() {
@@ -1612,6 +1700,10 @@ function aplicarRecompensaMissao(missao, notificar = true) {
     }
 
     if (missao.id === "missao-02") {
+        liberarAreaMapa("area-2");
+    }
+
+    if (missao.id === "missao-03") {
         desbloquearPack(1);
     }
 
@@ -1622,31 +1714,49 @@ function aplicarRecompensaMissao(missao, notificar = true) {
     }
 }
 
+function concluirMissaoPrincipal(missao, notificar = true) {
+    if (!missao || missao.concluida || !missao.desbloqueada || !requisitoMissaoCompleto(missao.id)) {
+        return false;
+    }
+
+    missao.concluida = true;
+    aplicarRecompensaMissao(missao, notificar);
+    atualizarProgressoMissoesMapa(false);
+    return true;
+}
+
 function atualizarProgressoMissoesMapa(notificar = false) {
-    const comunsNivel2 = obterQuantidadeComunsNoNivelMinimo(2);
-    const operacoesFinalizadas = obterQuantidadeOperacoesFinalizadas();
     const missao01 = obterMissaoPorId("missao-01");
     const missao02 = obterMissaoPorId("missao-02");
+    const missao03 = obterMissaoPorId("missao-03");
 
     if (missao01) {
-        const estavaConcluida = missao01.concluida;
+        missao01.requisitoCompleto = requisitoMissaoCompleto(missao01.id);
 
-        missao01.concluida = comunsNivel2 >= 2;
-
-        if (missao01.concluida && (!estavaConcluida || !missao01.recompensaAplicada)) {
+        if (missao01.concluida && !missao01.recompensaAplicada) {
             aplicarRecompensaMissao(missao01, notificar);
         }
     }
 
     if (missao02) {
         missao02.desbloqueada = Boolean(missao01 && missao01.concluida);
+        missao02.requisitoCompleto = missao02.desbloqueada && requisitoMissaoCompleto(missao02.id);
 
-        const estavaConcluida = missao02.concluida;
-
-        missao02.concluida = missao02.desbloqueada && operacoesFinalizadas >= 3;
-
-        if (missao02.concluida && (!estavaConcluida || !missao02.recompensaAplicada)) {
+        if (missao02.concluida && !missao02.recompensaAplicada) {
             aplicarRecompensaMissao(missao02, notificar);
+        }
+
+        if (missao02.concluida && missao02.recompensaAplicada) {
+            liberarAreaMapa("area-2");
+        }
+    }
+
+    if (missao03) {
+        missao03.desbloqueada = Boolean(missao02 && missao02.concluida);
+        missao03.requisitoCompleto = missao03.desbloqueada && requisitoMissaoCompleto(missao03.id);
+
+        if (missao03.concluida && !missao03.recompensaAplicada) {
+            aplicarRecompensaMissao(missao03, notificar);
         }
     }
 
@@ -2209,13 +2319,14 @@ function criarMiniCartaOperacao(carta) {
 }
 
 function criarMarcadorOperacao(operacao) {
+    const tipo = TIPOS_MISSAO[operacao.tipo] || TIPOS_MISSAO.operacao;
     const marcador = document.createElement("button");
     const icone = document.createElement("span");
     const andamento = operacaoEmAndamento(operacao);
     const concluida = operacaoEstaConcluida(operacao);
 
     marcador.type = "button";
-    marcador.className = `marcador-missao ${TIPOS_MISSAO.operacao.classe}`;
+    marcador.className = `marcador-missao ${tipo.classe}`;
     marcador.classList.toggle("missao-bloqueada", operacaoEmCooldown(operacao));
     marcador.classList.toggle("missao-em-andamento", Boolean(andamento));
     marcador.classList.toggle("missao-concluida", concluida);
@@ -2233,7 +2344,7 @@ function criarMarcadorOperacao(operacao) {
     }
 
     icone.className = "marcador-missao-icone";
-    icone.innerText = concluida ? "✓" : TIPOS_MISSAO.operacao.simbolo;
+    icone.innerText = concluida ? "✓" : tipo.simbolo;
     marcador.appendChild(icone);
     marcador.addEventListener("click", () => {
         if (concluida) {
@@ -2265,6 +2376,7 @@ function atualizarIndicadoresOperacoesMapa() {
 }
 
 function abrirModalOperacao(operacao) {
+    const tipo = TIPOS_MISSAO[operacao.tipo] || TIPOS_MISSAO.operacao;
     const cartasSelecionadas = [];
     const andamento = operacaoEmAndamento(operacao);
     const cooldown = estadoOperacoes.cooldowns[operacao.id];
@@ -2323,7 +2435,7 @@ function abrirModalOperacao(operacao) {
     botaoFechar.type = "button";
     botaoFechar.setAttribute("aria-label", "Fechar operacao");
     botaoFechar.innerText = "X";
-    tipoElemento.innerText = "Missao de Operacao";
+    tipoElemento.innerText = tipo.nome;
     titulo.innerText = operacao.nome;
     tituloAnalise.innerText = "Analise da equipe";
     tituloEquipe.innerText = andamento ? "Equipe enviada" : "Sua equipe";
@@ -2581,6 +2693,8 @@ function executarAnimacaoDispatch(container, aoTerminar) {
 function abrirModalMissao(missao) {
     const tipo = TIPOS_MISSAO[missao.tipo];
     const estaBloqueada = !missao.desbloqueada;
+    const requisitoCompleto = Boolean(missao.requisitoCompleto || requisitoMissaoCompleto(missao.id));
+    const podeConcluir = !estaBloqueada && !missao.concluida && requisitoCompleto;
 
     fecharModalMissao();
 
@@ -2594,6 +2708,7 @@ function abrirModalMissao(missao) {
     const recompensaBox = document.createElement("div");
     const recompensaLabel = document.createElement("span");
     const recompensaValor = document.createElement("strong");
+    const botaoConcluir = document.createElement("button");
 
     modal.id = "modalMissao";
     modal.className = "modal-missao";
@@ -2604,20 +2719,24 @@ function abrirModalMissao(missao) {
     recompensaBox.className = "modal-missao-recompensa";
     recompensaLabel.className = "modal-missao-recompensa-label";
     recompensaValor.className = "modal-missao-recompensa-valor";
+    botaoConcluir.className = "modal-missao-concluir";
 
     botaoFechar.type = "button";
+    botaoConcluir.type = "button";
     botaoFechar.setAttribute("aria-label", "Fechar missao");
     botaoFechar.innerText = "X";
     tipoElemento.innerText = `${tipo.simbolo} ${tipo.nome}`;
     status.innerText = estaBloqueada
         ? "Bloqueada"
-        : missao.concluida ? "Concluida" : "Disponivel";
+        : missao.concluida ? "Concluida" : requisitoCompleto ? "Pronta para concluir" : "Disponivel";
     titulo.innerText = missao.nome;
     descricao.innerText = estaBloqueada
         ? "O sinal ainda esta fraco. Conclua a missao anterior para revelar este objetivo."
         : missao.descricao;
     recompensaLabel.innerText = "Recompensa";
     recompensaValor.innerText = estaBloqueada ? "???" : missao.recompensa;
+    botaoConcluir.innerText = requisitoCompleto ? "Concluir missao" : "Requisito incompleto";
+    botaoConcluir.disabled = !podeConcluir;
 
     conteudo.appendChild(botaoFechar);
     conteudo.appendChild(tipoElemento);
@@ -2627,10 +2746,20 @@ function abrirModalMissao(missao) {
     recompensaBox.appendChild(recompensaLabel);
     recompensaBox.appendChild(recompensaValor);
     conteudo.appendChild(recompensaBox);
+
+    if (!estaBloqueada && !missao.concluida) {
+        conteudo.appendChild(botaoConcluir);
+    }
+
     modal.appendChild(conteudo);
     document.body.appendChild(modal);
 
     botaoFechar.addEventListener("click", fecharModalMissao);
+    botaoConcluir.addEventListener("click", () => {
+        if (concluirMissaoPrincipal(missao, true)) {
+            fecharModalMissao();
+        }
+    });
     modal.addEventListener("click", (evento) => {
         if (evento.target === modal) {
             fecharModalMissao();
@@ -2647,6 +2776,7 @@ function criarMarcadorMissao(missao) {
     marcador.className = `marcador-missao ${tipo.classe}`;
     marcador.classList.toggle("missao-concluida", missao.concluida);
     marcador.classList.toggle("missao-bloqueada", !missao.desbloqueada);
+    marcador.classList.toggle("missao-pronta", missao.desbloqueada && !missao.concluida && Boolean(missao.requisitoCompleto));
     marcador.style.left = `${(missao.posX / MAPA_BASE_LARGURA) * 100}%`;
     marcador.style.top = `${(missao.posY / MAPA_BASE_ALTURA) * 100}%`;
     marcador.setAttribute("aria-label", `Abrir ${missao.nome}`);
@@ -2678,6 +2808,7 @@ function renderizarMissoesNoMapa(mapa) {
 
     if (leitorTaticoOperacoesDesbloqueado()) {
         OPERACOES_MAPA
+            .filter((operacao) => operacaoEstaDesbloqueadaNoMapa(operacao))
             .filter((operacao) => !operacaoFoiColetada(operacao))
             .forEach((operacao) => {
                 camadaMissoes.appendChild(criarMarcadorOperacao(operacao));
@@ -2691,11 +2822,16 @@ function atualizarAreaMapa(areaId, liberada) {
     const area = AREAS_MAPA.find((item) => item.id === areaId);
     const mapa = document.getElementById("conteudoMapa");
 
-    if (!area || !mapa) {
+    if (!area) {
         return;
     }
 
     area.liberada = liberada;
+
+    if (!mapa) {
+        return;
+    }
+
     criarSobreposicaoAreas(mapa);
 }
 
